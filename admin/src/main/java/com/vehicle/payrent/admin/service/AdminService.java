@@ -1,133 +1,147 @@
 package com.vehicle.payrent.admin.service;
 
+import com.vehicle.payrent.admin.dto.LoginRequest;
+import com.vehicle.payrent.admin.dto.VehicleRequest;
+import com.vehicle.payrent.admin.dto.VendorRequest;
 import com.vehicle.payrent.admin.entity.*;
+import com.vehicle.payrent.admin.exception.DuplicateResourceException;
+import com.vehicle.payrent.admin.exception.InvalidCredentialsException;
+import com.vehicle.payrent.admin.exception.ResourceNotFoundException;
 import com.vehicle.payrent.admin.repository.*;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.NoSuchElementException;
 
 @Service
+@RequiredArgsConstructor
+@Transactional
 public class AdminService {
 
-    @Autowired
-    private AdminRepository adminRepository;
-    @Autowired
-    private VehicleRepository vehicleRepository;
-    @Autowired
-    private BookingRepository bookingRepository;
-    @Autowired
-    private UserRepository userRepository;
-    @Autowired
-    private VendorRepository vendorRepository;
-    @Autowired
-    private FeedbackRepository feedbackRepository;
+    private final AdminRepository adminRepository;
+    private final VehicleRepository vehicleRepository;
+    private final BookingRepository bookingRepository;
+    private final UserRepository userRepository;
+    private final VendorRepository vendorRepository;
+    private final FeedbackRepository feedbackRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public Boolean validate(String adminId,String password){
+    @Transactional(readOnly = true)
+    public void authenticate(LoginRequest request) {
+        Admin admin = adminRepository.findByAdminId(request.getUsername())
+                .orElseThrow(() -> new InvalidCredentialsException());
 
-        Admin registration=adminRepository.findByUserName(adminId,password);
-        if(registration !=null){
-            return true;
+        if (!passwordEncoder.matches(request.getPassword(), admin.getPassword())) {
+            throw new InvalidCredentialsException();
         }
-        //throw new NoSuchElementException("Username not found");
-        return false;
     }
 
-    @Transactional
-    public Vehicle addVehicle(Vehicle vehicle){
-
+    public Vehicle createVehicle(VehicleRequest request) {
+        Vehicle vehicle = new Vehicle();
+        vehicle.setVehicleName(request.getVehicleName());
+        vehicle.setBooked(request.isBooked());
+        vehicle.setRentPerday(request.getRentPerDay());
         return vehicleRepository.save(vehicle);
     }
 
-    @Transactional
-    public Vehicle updateVehicle(Integer vehicleId, Vehicle vehicle){
-        Vehicle vehicle1=vehicleRepository.findById(vehicleId).get();
-        if(vehicle1 != null) {
-            vehicle1.setBooked(vehicle.isBooked());
-            vehicle1.setRentPerday(vehicle.getRentPerday());
-            vehicle1.setVehicleName(vehicle.getVehicleName());
-            return vehicleRepository.save(vehicle1);
-        }
-        else
-            throw new NoSuchElementException("VEHICLE_DOESN'T_EXISTS");
+    public Vehicle updateVehicle(Integer vehicleId, VehicleRequest request) {
+        Vehicle vehicle = vehicleRepository.findById(vehicleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Vehicle", vehicleId));
+        vehicle.setVehicleName(request.getVehicleName());
+        vehicle.setBooked(request.isBooked());
+        vehicle.setRentPerday(request.getRentPerDay());
+        return vehicleRepository.save(vehicle);
     }
 
-    @Transactional
-    public Boolean deleteVehicle(Integer vehicleId){
-        Vehicle vehicle = vehicleRepository.findById(vehicleId).get();
-        if (vehicle != null) {
-            vehicleRepository.deleteById(vehicleId);
-            return true;
-        } else {
-            return false;
-        }
+    public void deleteVehicle(Integer vehicleId) {
+        Vehicle vehicle = vehicleRepository.findById(vehicleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Vehicle", vehicleId));
+        vehicleRepository.delete(vehicle);
     }
 
-    @Transactional
-    public List<Vehicle> getAllVehicle(){
+    @Transactional(readOnly = true)
+    public List<Vehicle> getAllVehicles() {
         return vehicleRepository.findAll();
-
     }
 
-    @Transactional
-    public List<BookingDetail> getAllBookingDetails(){
+    @Transactional(readOnly = true)
+    public List<BookingDetail> getAllBookingDetails() {
         return bookingRepository.findAll();
-
     }
 
-    @Transactional
-    public List<User> getAllUser(){
+    @Transactional(readOnly = true)
+    public List<User> getAllUsers() {
         return userRepository.findAll();
     }
 
-    @Transactional
-    public Vendor addVendor(Vendor vendor){
-
-         return vendorRepository.save(vendor);
+    public Vendor createVendor(VendorRequest request) {
+        vendorRepository.findByUsername(request.getUsername()).ifPresent(vendor -> {
+            throw new DuplicateResourceException("Vendor username already exists");
+        });
+        Vendor vendor = new Vendor();
+        vendor.setVendorName(request.getVendorName());
+        vendor.setUsername(request.getUsername());
+        vendor.setAddress(request.getAddress());
+        vendor.setPhone(request.getPhone());
+        vendor.setPassword(passwordEncoder.encode(request.getPassword()));
+        Vendor saved = vendorRepository.save(vendor);
+        saved.setPassword(null);
+        return saved;
     }
 
-    @Transactional
-    public Vendor updateVendor(Integer vendorId, Vendor vendor){
+    public Vendor updateVendor(Integer vendorId, VendorRequest request) {
+        Vendor vendor = vendorRepository.findById(vendorId)
+                .orElseThrow(() -> new ResourceNotFoundException("Vendor", vendorId));
 
-        Vendor vendor1=vendorRepository.findById(vendorId).get();
-        if(vendor1 != null) {
-            vendor1.setUsername(vendor.getUsername());
-            vendor1.setAddress(vendor.getAddress());
-            vendor1.setPassword(vendor.getPassword());
-            vendor1.setVendorName(vendor.getVendorName());
-            vendor1.setPhone(vendor.getPhone());
-            return vendorRepository.save(vendor1);
-        }
-        else
-            throw new NoSuchElementException("VEHICLE_DOESN'T_EXISTS");
+        vendorRepository.findByUsername(request.getUsername())
+                .filter(existing -> !existing.getVendorId().equals(vendorId))
+                .ifPresent(existing -> {
+                    throw new DuplicateResourceException("Vendor username already exists");
+                });
+
+        vendor.setVendorName(request.getVendorName());
+        vendor.setUsername(request.getUsername());
+        vendor.setAddress(request.getAddress());
+        vendor.setPhone(request.getPhone());
+        vendor.setPassword(passwordEncoder.encode(request.getPassword()));
+        Vendor saved = vendorRepository.save(vendor);
+        saved.setPassword(null);
+        return saved;
     }
 
-    @Transactional
-    public Boolean deleteVendor(Integer vendorId){
-
-        Vendor vendor = vendorRepository.findById(vendorId).get();
-        if (vendor != null) {
-            vendorRepository.deleteById(vendorId);
-            return true;
-        } else {
-            return false;
-        }
+    public void deleteVendor(Integer vendorId) {
+        Vendor vendor = vendorRepository.findById(vendorId)
+                .orElseThrow(() -> new ResourceNotFoundException("Vendor", vendorId));
+        vendorRepository.delete(vendor);
     }
 
-    @Transactional
-    public List<Vendor> getAllVendor(){
-        return vendorRepository.findAll();
+    @Transactional(readOnly = true)
+    public List<Vendor> getAllVendors() {
+        List<Vendor> vendors = vendorRepository.findAll();
+        vendors.forEach(v -> v.setPassword(null));
+        return vendors;
     }
 
-    @Transactional
-    public List<Feedback> getAllFeedback(){
+    @Transactional(readOnly = true)
+    public Vendor getVendor(Integer vendorId) {
+        Vendor vendor = vendorRepository.findById(vendorId)
+                .orElseThrow(() -> new ResourceNotFoundException("Vendor", vendorId));
+        vendor.setPassword(null);
+        return vendor;
+    }
+
+    @Transactional(readOnly = true)
+    public Vendor getVendorByName(String vendorName) {
+        Vendor vendor = vendorRepository.findByVendorName(vendorName)
+                .orElseThrow(() -> new ResourceNotFoundException("Vendor", vendorName));
+        vendor.setPassword(null);
+        return vendor;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Feedback> getAllFeedback() {
         return feedbackRepository.findAll();
-    }
-
-    @Transactional
-    public Vendor getVendor(Integer vendorId){
-        return vendorRepository.findById(vendorId).get();
     }
 }

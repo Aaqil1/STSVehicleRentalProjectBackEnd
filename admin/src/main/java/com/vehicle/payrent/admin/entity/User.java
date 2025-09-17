@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import javax.persistence.*;
 import javax.validation.constraints.NotBlank;
+import java.util.ArrayList;
 import java.util.List;
 
 @Entity
@@ -46,5 +47,12 @@ public class User {
 
     @Column(nullable = false)
     private String Phone;
+
+    @Column(nullable = false)
+    private String role = "ROLE_USER";
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<BookingDetail> bookings = new ArrayList<>();
 
 }

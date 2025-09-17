@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: ${USER_DATASOURCE_URL:jdbc:mysql://localhost:3306/project}
+    username: ${USER_DATASOURCE_USERNAME:root}
+    password: ${USER_DATASOURCE_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL5Dialect
+    show-sql: true
+    hibernate:
+      ddl-auto: update
+server:
+  port: ${USER_SERVER_PORT:8085}

@@ -1,10 +1,13 @@
 package com.vehicle.payrent.admin.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import javax.persistence.*;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Data
@@ -25,5 +28,9 @@ public class Vehicle {
 
     @Column(nullable = false)
     private Integer rentPerday;
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "vehicle", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<BookingDetail> bookings = new ArrayList<>();
 
 }

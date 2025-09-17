@@ -1,89 +1,60 @@
 package com.vehicle.payrent.vendor.controller;
 
+import com.vehicle.payrent.vendor.dto.ApiResponse;
+import com.vehicle.payrent.vendor.dto.LoginRequest;
+import com.vehicle.payrent.vendor.dto.VehicleRequest;
 import com.vehicle.payrent.vendor.entity.BookingDetail;
 import com.vehicle.payrent.vendor.entity.Vehicle;
-import com.vehicle.payrent.vendor.entity.VendorLogin;
 import com.vehicle.payrent.vendor.service.VendorService;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.util.CollectionUtils;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.NoSuchElementException;
 
 @CrossOrigin(origins = "http://localhost:4200")
 @RestController
+@RequestMapping("/api/vendor")
+@Validated
+@RequiredArgsConstructor
 public class VendorController {
 
-    @Autowired
-    private VendorService vendorService;
+    private final VendorService vendorService;
 
-    @PostMapping("/vendor/login")
-    public ResponseEntity<HttpStatus> vendorLogin(@RequestBody VendorLogin vendorlogin){
-
-        Boolean b =   vendorService.validate(vendorlogin.getUsername(), vendorlogin.getPassword());
-        return b ? new ResponseEntity<>(HttpStatus.OK):
-                new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    @PostMapping("/login")
+    public ResponseEntity<ApiResponse> vendorLogin(@Valid @RequestBody LoginRequest request) {
+        vendorService.authenticate(request);
+        return ResponseEntity.ok(ApiResponse.builder().success(true).message("Login successful").build());
     }
 
-    @PutMapping("/vendor/vehicle/{vehicleId}")
-    public ResponseEntity<HttpStatus> updateVehicle(@PathVariable Integer vehicleId, @Valid @RequestBody Vehicle vehicle){
-
-        Vehicle vehicle1 = vendorService.updateVehicle(vehicleId,vehicle);
-        if(vehicle1 != null){
-            return new ResponseEntity<>(HttpStatus.OK);
-        }
-        else
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-
+    @PutMapping("/vehicles/{vehicleId}")
+    public ResponseEntity<Vehicle> updateVehicle(@PathVariable Integer vehicleId,
+                                                 @Valid @RequestBody VehicleRequest request) {
+        Vehicle vehicle = vendorService.updateVehicle(vehicleId, request);
+        return ResponseEntity.ok(vehicle);
     }
 
-    @DeleteMapping("/vendor/vehicle/{vehicleId}")
-    public ResponseEntity<HttpStatus> deleteVehicle(@PathVariable Integer vehicleId){
-
-        Boolean b = vendorService.deleteVehicle(vehicleId);
-
-        return b ? new ResponseEntity<>(HttpStatus.OK) : new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+    @DeleteMapping("/vehicles/{vehicleId}")
+    public ResponseEntity<ApiResponse> deleteVehicle(@PathVariable Integer vehicleId) {
+        vendorService.deleteVehicle(vehicleId);
+        return ResponseEntity.ok(ApiResponse.builder().success(true).message("Vehicle deleted").build());
     }
 
-    @GetMapping("vendor/booking/booking_details")
-    public ResponseEntity<List<BookingDetail>> getAllBookingDetails(){
-
-        List<BookingDetail> bookingDetailList = vendorService.getAllBookingDetails();
-
-        return !CollectionUtils.isEmpty(bookingDetailList) ? new ResponseEntity<>(bookingDetailList,HttpStatus.OK) :
-                new ResponseEntity<>(HttpStatus.NO_CONTENT);
+    @GetMapping("/bookings")
+    public ResponseEntity<List<BookingDetail>> getAllBookingDetails() {
+        return ResponseEntity.ok(vendorService.getAllBookingDetails());
     }
 
-    @ResponseStatus(HttpStatus.NOT_FOUND)
-    @ExceptionHandler(NoSuchElementException.class)
-    public Map<String,String> noSuchElementException(NoSuchElementException ee){
-        Map<String,String> errors = new HashMap<>();
-        errors.put("message",ee.getMessage());
-        return errors;
+    @GetMapping("/vehicles")
+    public ResponseEntity<List<Vehicle>> getAllVehicleDetails() {
+        return ResponseEntity.ok(vendorService.getAllVehicleDetails());
     }
 
-    @GetMapping("vendor/vehicles")
-    public ResponseEntity<List<Vehicle>> getAllVehicleDetails(){
-
-        List<Vehicle> vehicleList = vendorService.getAllVehicleDetails();
-        return !CollectionUtils.isEmpty(vehicleList) ? new ResponseEntity<>(vehicleList,HttpStatus.OK) :
-                new ResponseEntity<>(HttpStatus.NO_CONTENT);
-    }
-
-    @GetMapping("vendor/vehicle/{vehicleId}")
-    public ResponseEntity<Vehicle> getVehicle(@PathVariable Integer vehicleId){
-
-        Vehicle vehicle = vendorService.getVehicle(vehicleId);
-        if(vehicle != null){
-            return new ResponseEntity<>(vehicle,HttpStatus.OK);
-        }
-        else
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+    @GetMapping("/vehicles/{vehicleId}")
+    public ResponseEntity<Vehicle> getVehicle(@PathVariable Integer vehicleId) {
+        return ResponseEntity.ok(vendorService.getVehicle(vehicleId));
     }
 }
