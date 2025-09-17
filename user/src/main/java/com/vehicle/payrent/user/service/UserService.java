@@ -1,117 +1,112 @@
 package com.vehicle.payrent.user.service;
 
-import com.sun.org.apache.xpath.internal.operations.Bool;
+import com.vehicle.payrent.user.dto.BookingRequest;
+import com.vehicle.payrent.user.dto.FeedbackRequest;
+import com.vehicle.payrent.user.dto.LoginRequest;
+import com.vehicle.payrent.user.dto.PaymentRequest;
+import com.vehicle.payrent.user.dto.UserRegistrationRequest;
 import com.vehicle.payrent.user.entity.BookingDetail;
 import com.vehicle.payrent.user.entity.Feedback;
 import com.vehicle.payrent.user.entity.User;
 import com.vehicle.payrent.user.entity.Vehicle;
+import com.vehicle.payrent.user.exception.DuplicateResourceException;
+import com.vehicle.payrent.user.exception.InvalidCredentialsException;
+import com.vehicle.payrent.user.exception.PaymentVerificationException;
+import com.vehicle.payrent.user.exception.ResourceNotFoundException;
 import com.vehicle.payrent.user.repository.BookingRepository;
 import com.vehicle.payrent.user.repository.FeedbackRepository;
 import com.vehicle.payrent.user.repository.UserRepository;
 import com.vehicle.payrent.user.repository.VehicleRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.Optional;
 
 @Service
+@RequiredArgsConstructor
+@Transactional
 public class UserService {
 
-    @Autowired
-    private UserRepository userRepository;
+    private final UserRepository userRepository;
+    private final VehicleRepository vehicleRepository;
+    private final BookingRepository bookingRepository;
+    private final FeedbackRepository feedbackRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private VehicleRepository vehicleRepository;
+    public User register(UserRegistrationRequest request) {
+        userRepository.findByUsername(request.getUsername()).ifPresent(user -> {
+            throw new DuplicateResourceException("Username already exists");
+        });
 
-    @Autowired
-    private BookingRepository bookingRepository;
+        User user = new User();
+        user.setUsername(request.getUsername());
+        user.setFirstName(request.getFirstName());
+        user.setLastName(request.getLastName());
+        user.setPassword(passwordEncoder.encode(request.getPassword()));
+        user.setAddress(request.getAddress());
+        user.setGender(request.getGender());
+        user.setPhone(request.getPhone());
+        return userRepository.save(user);
+    }
 
-    @Autowired
-    private FeedbackRepository feedbackRepository;
-
-    public Boolean validate(String username,String password){
-        User registration=userRepository.findByUserName(username,password);
-        if(registration !=null){
-            return true;
+    @Transactional(readOnly = true)
+    public void authenticate(LoginRequest request) {
+        User user = userRepository.findByUsername(request.getUsername())
+                .orElseThrow(InvalidCredentialsException::new);
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            throw new InvalidCredentialsException();
         }
-        //throw new NoSuchElementException("Username not found");
-        return false;
     }
 
-    @Transactional
-    public String validateUser(String username){
-        User registration=userRepository.findByUser(username);
-        if(registration !=null){
-            return "username found";
-            //throw new NoSuchElementException("username found");
-        }else {
-            return "username not found";
-        }
-    }
-
-    @Transactional
-    public User newUser( User userRegister){
-        return userRepository.save(userRegister);
-    }
-
-    @Transactional
-    public List<User> findAll(){
+    @Transactional(readOnly = true)
+    public List<User> findAll() {
         return userRepository.findAll();
     }
 
-    @Transactional
-    public List<Vehicle> findAllVehicles(){
-        return vehicleRepository.findAllVehicles();
+    @Transactional(readOnly = true)
+    public User getUser(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User", username));
     }
 
-    @Transactional
-    public BookingDetail isBooked(String username, Integer vehicleId, Integer noOfDays){
+    @Transactional(readOnly = true)
+    public List<Vehicle> findAvailableVehicles() {
+        return vehicleRepository.findByIsBookedFalse();
+    }
 
-        User user = userRepository.getUserId(username);
+    public BookingDetail bookVehicle(String username, BookingRequest request) {
+        User user = getUser(username);
+        Vehicle vehicle = vehicleRepository.findById(request.getVehicleId())
+                .orElseThrow(() -> new ResourceNotFoundException("Vehicle", request.getVehicleId()));
+
+        if (vehicle.isBooked()) {
+            throw new DuplicateResourceException("Vehicle is already booked");
+        }
+
+        vehicle.setBooked(true);
         BookingDetail bookingDetail = new BookingDetail();
-        Vehicle originalVehicleDetails = vehicleRepository.findById(vehicleId).get();
-
-        if(user != null && originalVehicleDetails != null && !originalVehicleDetails.isBooked()) {
-            originalVehicleDetails.setBooked(true);
-            bookingDetail.setUsername(username);
-            bookingDetail.setVehicleId(vehicleId);
-            bookingDetail.setNoOfDays(noOfDays);
-            bookingDetail.setTotalAmount(originalVehicleDetails.getRentPerday() * noOfDays);
-            vehicleRepository.save(originalVehicleDetails);
-            bookingRepository.save(bookingDetail);
-            return bookingDetail;
-        }
-        else
-            throw new NoSuchElementException("username or vehicle Id not found");
-
+        bookingDetail.setUser(user);
+        bookingDetail.setVehicle(vehicle);
+        bookingDetail.setNoOfDays(request.getNoOfDays());
+        bookingDetail.setTotalAmount(vehicle.getRentPerday() * request.getNoOfDays());
+        vehicleRepository.save(vehicle);
+        return bookingRepository.save(bookingDetail);
     }
 
-    @Transactional
-    public Boolean payRent(Integer bookingId, Integer totalAmount){
-
-        Boolean b = false;
-        BookingDetail bookingDetail = bookingRepository.findById(bookingId).get();
-        if(bookingDetail != null) {
-            Integer amount = bookingDetail.getTotalAmount();
-            if (amount.equals(totalAmount)) {
-               b= true;
-            }
+    public void payRent(PaymentRequest request) {
+        BookingDetail bookingDetail = bookingRepository.findById(request.getBookingId())
+                .orElseThrow(() -> new ResourceNotFoundException("Booking", request.getBookingId()));
+        if (!bookingDetail.getTotalAmount().equals(request.getTotalAmount())) {
+            throw new PaymentVerificationException();
         }
-        else
-            b= false;
-
-        return b;
     }
 
-    @Transactional
-    public Boolean newFeedback(Feedback feedback){
-        Feedback feedback1 = feedbackRepository.save(feedback);
-        if(feedback1 != null)
-            return true;
-        else
-            return false;
+    public Feedback submitFeedback(FeedbackRequest request) {
+        User user = getUser(request.getUsername());
+        Feedback feedback = new Feedback();
+        feedback.setFeedback(request.getFeedback() + " - " + user.getUsername());
+        return feedbackRepository.save(feedback);
     }
 }

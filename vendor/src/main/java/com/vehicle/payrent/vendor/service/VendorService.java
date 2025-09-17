@@ -1,75 +1,67 @@
 package com.vehicle.payrent.vendor.service;
 
+import com.vehicle.payrent.vendor.dto.LoginRequest;
+import com.vehicle.payrent.vendor.dto.VehicleRequest;
 import com.vehicle.payrent.vendor.entity.BookingDetail;
 import com.vehicle.payrent.vendor.entity.Vehicle;
 import com.vehicle.payrent.vendor.entity.Vendor;
+import com.vehicle.payrent.vendor.exception.InvalidCredentialsException;
+import com.vehicle.payrent.vendor.exception.ResourceNotFoundException;
 import com.vehicle.payrent.vendor.repository.BookingRepository;
 import com.vehicle.payrent.vendor.repository.VehicleRepository;
 import com.vehicle.payrent.vendor.repository.VendorRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.NoSuchElementException;
 
 @Service
+@RequiredArgsConstructor
+@Transactional
 public class VendorService {
 
-    @Autowired
-    private BookingRepository bookingRepository;
-    @Autowired
-    private VehicleRepository vehicleRepository;
-    @Autowired
-    private VendorRepository vendorRepository;
+    private final BookingRepository bookingRepository;
+    private final VehicleRepository vehicleRepository;
+    private final VendorRepository vendorRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public List<BookingDetail> getAllBookingDetails(){
+    @Transactional(readOnly = true)
+    public void authenticate(LoginRequest request) {
+        Vendor vendor = vendorRepository.findByUsername(request.getUsername())
+                .orElseThrow(InvalidCredentialsException::new);
+        if (!passwordEncoder.matches(request.getPassword(), vendor.getPassword())) {
+            throw new InvalidCredentialsException();
+        }
+    }
 
+    @Transactional(readOnly = true)
+    public List<BookingDetail> getAllBookingDetails() {
         return bookingRepository.findAll();
     }
 
-    @Transactional
-    public List<Vehicle> getAllVehicleDetails(){
-
+    @Transactional(readOnly = true)
+    public List<Vehicle> getAllVehicleDetails() {
         return vehicleRepository.findAll();
     }
-    @Transactional
-    public Vehicle getVehicle(Integer vehicleId){
-        return vehicleRepository.findById(vehicleId).get();
+
+    @Transactional(readOnly = true)
+    public Vehicle getVehicle(Integer vehicleId) {
+        return vehicleRepository.findById(vehicleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Vehicle", vehicleId));
     }
 
-    @Transactional
-    public Vehicle updateVehicle(Integer vehicleId, Vehicle vehicle){
-       // log.info("");
-        Vehicle vehicle1=vehicleRepository.findById(vehicleId).get();
-        if(vehicle1 != null) {
-            vehicle1.setBooked(vehicle.isBooked());
-            vehicle1.setRentPerday(vehicle.getRentPerday());
-            vehicle1.setVehicleName(vehicle.getVehicleName());
-            return vehicleRepository.save(vehicle1);
-        }
-        else
-            throw new NoSuchElementException("VEHICLE_DOESN'T_EXISTS");
+    public Vehicle updateVehicle(Integer vehicleId, VehicleRequest request) {
+        Vehicle vehicle = getVehicle(vehicleId);
+        vehicle.setBooked(request.isBooked());
+        vehicle.setRentPerday(request.getRentPerDay());
+        vehicle.setVehicleName(request.getVehicleName());
+        return vehicleRepository.save(vehicle);
     }
 
-    @Transactional
-    public Boolean deleteVehicle(Integer vehicleId) {
-        Vehicle vehicle = vehicleRepository.findById(vehicleId).get();
-        if (vehicle != null) {
-            vehicleRepository.deleteById(vehicleId);
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    @Transactional
-    public Boolean validate(String username,String password){
-        Vendor registration=vendorRepository.findByUserName(username,password);
-        if(registration !=null){
-            return true;
-        }
-        //throw new NoSuchElementException("Username not found");
-        return false;
+    public void deleteVehicle(Integer vehicleId) {
+        Vehicle vehicle = getVehicle(vehicleId);
+        vehicleRepository.delete(vehicle);
     }
 }
